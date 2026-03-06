@@ -1,0 +1,1 @@
+{"skills": ["textbook", "elephant"], "descriptions": ["the image contains one or more textbooks.", "the image contains one or more elephants."], "categories": ["object", "object"], "json_descr": {"objects": [{"id": 1, "item": "textbook"}, {"id": 2, "item": "elephant"}]}}

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="Stefano Zoia">
+    <meta property="og:title" content="Visual Evaluation (II)">
+    <meta property="og:type" content="website">
+    <title>Visual Evaluation (II)</title>
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+</head>
+<body id="app">
+    <div class="container">
+        <h1>Visual Evaluation (II)</h1>
+
+        <!-- IMAGE COMPARISON -->
+        <div id="img-comp" class="image-comparison" v-if="status==='evaluation'">
+            <div id="img-descr">
+                <p>Select the image that better represents the following description:<br/><br/>
+                <!--ul id="descriptions-list">
+                    <li v-for="desc in currentImages.descriptions" v-text="desc"></li>
+                </ul-->
+                <span v-text="currentImages.description"></span></p>
+            </div>
+            
+            <div class="images">
+                <img id="image1" :src="currentImages.image1" alt="Image 1">
+                <img id="image2" :src="currentImages.image2" alt="Image 2">
+            </div>
+            <div class="image-names">
+                <span id="image1-name">Image A</span>
+                <span id="image2-name">Image B</span>
+            </div>
+            <div class="a-b-buttons">
+                <div class="button-group">
+                    <div class="action-buttons">
+                        <button id="image1-btn" @click="selectWinner('image1')">A is better <span class="shortcut">(&larr; left arrow)</span></button>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <div class="action-buttons">
+                        <button id="image2-btn" @click="selectWinner('image2')">B is better <span class="shortcut">(&rarr; right arrow)</span></button>
+                    </div>
+                </div>
+            </div>
+            <!--div class="tie-button">
+                <div class="button-group">
+                    <div class="action-buttons">
+                        <button id="tie-btn" @click="selectWinner('tie')">No preference<span class="shortcut">(N key)</span></button>
+                    </div>
+                </div>
+            </div-->
+        </div>
+        <div v-else-if="status === 'thanks' || status === 'end'">
+            <p>Thank you for participating in our study!</p>
+            <div v-if="status === 'thanks'">
+                <p>If you want, you can continue with other images:</p>
+                <div class="action-buttons">
+                    <button class="nav-button" @click="continuing()">Continue with other images</button>
+                </div>
+            </div>
+            <div v-else>
+                <p>You evaluated all the images in our dataset ✨</p>
+            </div>
+            <!--p>Click here if another person wants to participate:</p>
+            <div class="action-buttons">
+                <button class="nav-button" @click="restart()">Start a new session</button>
+            </div-->
+        </div>
+        <!--div v-else-if="status === 'welcome'">
+            <p>Dear Participant,<br/><br/>
+                The following form will show you pairs of images together with a brief description. You will be asked to select the image that, according to you, better depicts the provided description.<br/><br/>
+                You will be presented 30 images. For a better experience, do not close this page until you end the task. In any case, your answers are saved each time you send one.<br/><br/>
+                Thank you for your time!</p>
+            <div class="action-buttons">
+                <button class="nav-button" @click="status='evaluation'">Continue</button>
+            </div>
+        </div-->
+        <div v-else>
+            Error 500: something went wrong in processing the data. Please try again later.
+        </div>
+
+        <!-- PROGRESS BAR -->
+        <div v-if="status==='evaluation'">
+            <div class="progress-bar">
+                <div id="progress-fill" :style="{width: percentage}"></div>
+            </div>
+            <div id="progress-text" v-text="progrText"></div>
+        </div>
+
+    </div>
+    
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>PRIVACY</h3>
+                <p>This form is completely anonymous: no personal data is requested or stored.
+                    Your answers are collected solely for research purposes.</p>
+                <h3>SURVEY</h3>
+                <p>This survey is part of a collaboration between: Örebro University (Sweden) - University of Salerno (Italy) - Università di Torino (Italy) - Constructor University Bremen (Germany)</p>
+                <h3>CONTACT</h3>
+                <p>CoDesign Lab EU - Cognitive Vision and Perception<br/>
+                <a href="http://codesign-lab.org/cognitive-vision" target="_blank">http://codesign-lab.org/cognitive-vision</a></p>
+                <p>If you are interested to learn more about the context of this evaluation or stay in touch, please contact:
+                cognitive-vision@codesign-lab.org</p>
+            </div>
+        </div>
+    </footer>
+    
+    
+    <script src="https://unpkg.com/vue@3.1.1/dist/vue.global.prod.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    //used for presenting the evaluation task
+                    currentImages: {},
+                    
+                    //used for progress bar
+                    progrText: '',
+                    percentage: '0%',
+                    batchTarget: 30,     //number of images before thanks message
+                    batchIncrement: 10,  //number of images to add when continuing
+
+                    //used for controlling the overall status
+                    status: 'evaluation', //'evaluation', 'end' or 'thanks'
+                }
+            },
+            methods: {
+                updateProgress(progress) {
+                    const target = Math.min(this.batchTarget, progress.total)
+                    if (target <= progress.current){
+                        this.status = 'thanks';
+                    }
+                    const perc = (progress.current / target) * 100;
+                    this.percentage = `${perc}%`;
+                    this.progrText = `Progress: ${progress.current}/${target}.`;
+                },
+
+                // Load next pair of images
+                loadImages() {
+                    fetch('/get_images', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            sessionId: parseInt(sessionStorage.getItem("session_id"))
+                        }),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.end) {
+                            this.currentImages = {};
+                            this.updateProgress(data.progress);
+                            this.status = 'end';
+                        }else{
+                            console.log('Received image data:', data);
+                            this.currentImages = data;
+                            this.updateProgress(data.progress);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading images:', error);
+                    });
+                },
+
+                loadSession() {
+                    id = sessionStorage.getItem("session_id")
+                    if (! id) {
+                        fetch("/get_session")
+                        .then(response => response.json())
+                        .then(data => {
+                            sessionStorage.setItem("session_id", data.session);
+                            this.loadImages();
+                        });
+                    }else{
+                        this.loadImages();
+                    }
+                },
+
+                // Update after each comparison
+                selectWinner(winnerImage) {
+                    
+                    fetch('/update_scores', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            image1: this.currentImages.image1, 
+                            image2: this.currentImages.image2,
+                            winner: winnerImage,
+                            sessionId: parseInt(sessionStorage.getItem("session_id"))
+                        }),
+                    })
+                    .then(() => {
+                        this.loadImages();
+                    });
+                },
+                
+                // Map keys to selection buttons
+                animateButton(buttonId) {
+                    const button = document.getElementById(buttonId);
+                    button.classList.add('pressed');
+                    setTimeout(() => {
+                        button.classList.remove('pressed');
+                    }, 100);
+                },
+                
+                keyListener(event) {
+                    if (event.code === 'ArrowLeft') {
+                        this.selectWinner('image1');
+                        this.animateButton('image1-btn');
+                    } else if (event.code === 'ArrowRight') {
+                        this.selectWinner('image2');
+                        this.animateButton('image2-btn');
+                    } /*else if (event.code === 'KeyN') {
+                        this.selectWinner('tie');
+                        this.animateButton('tie-btn');
+                    }*/
+                },
+
+                /*restart() {
+                    this.status = 'welcome';
+                    fetch("/get_session")
+                    .then(response => response.json())
+                    .then(data => {
+                        sessionStorage.setItem("session_id", data.session);
+                        this.loadImages();
+                    });
+                },*/
+
+                continuing() {
+                    this.batchTarget = this.batchTarget + this.batchIncrement;
+                    this.status='evaluation';
+                    this.updateProgress(this.currentImages.progress);
+                }
+            },
+            mounted() {
+                // Initial loading
+                this.loadSession();
+                document.addEventListener('keydown', this.keyListener);
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+{"skills": ["man", "table"], "descriptions": ["the image contains one or more men.", "the image contains one or more tables."], "categories": ["object", "object"], "json_descr": {"objects": [{"id": 1, "item": "man"}, {"id": 2, "item": "table"}]}}

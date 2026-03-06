@@ -1,0 +1,6 @@
+Flask
+Gunicorn
+flask-sqlalchemy
+logging
+psycopg2-binary
+flask-migrate

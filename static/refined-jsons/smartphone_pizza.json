@@ -1,0 +1,1 @@
+{"skills": ["smartphone", "pizza"], "descriptions": ["the image contains one or more smartphones.", "the image contains one or more pizzas."], "categories": ["object", "object"], "json_descr": {"objects": [{"id": 1, "item": "smartphone"}, {"id": 2, "item": "pizza"}]}}
