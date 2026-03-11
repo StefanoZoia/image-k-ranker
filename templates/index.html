@@ -19,26 +19,26 @@
         <!-- IMAGE RANKING -->
         <div id="img-comp" v-if="status==='evaluation'">
             <div id="img-descr" class="row justify-content-center">
-                <p class="col-12 col-sm-10 col-md-8 col-lg-6"><span v-text="description"></span></p>
+                <p class="col-12 col-sm-10 col-md-8 col-lg-6"><span v-text="description" style="white-space: pre-line"></span></p>
             </div>
             <form @submit.prevent="submitAnswer">
                 <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 justify-content-center">
                     <div v-for="(img, i) in currentImages" class="col mb-3">
                         <img :src="img" class="img-fluid mx-auto d-block">
                         <select v-model="answer[i]" class="form-select" required>
-                            <option disabled value="null">Posizione</option>
+                            <option disabled value="null">Ranking</option>
                             <option v-for="n in 5" :value="n" v-text="n"></option>
                         </select>
                     </div>
                 </div>
                 <div class="row justify-content-center mb-3">
                     <div class="col-12 col-sm-10 col-md-8 col-lg-6">
-                        <label for="textarea">Quali sono le motivazioni della tua scelta?</label>
+                        <label for="textarea">Please explain the motivations for your choices</label>
                         <textarea class="form-control" id="textarea" style="height: 100px" v-model="comment"></textarea>
                     </div>
                 </div>
                 <button class="btn btn-primary mx-auto d-block" type="submit" :disabled="answer.includes(null) || comment==''">
-                    Invia
+                    Submit
                 </button>
             </form>
         </div>
