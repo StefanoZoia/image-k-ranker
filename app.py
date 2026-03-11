@@ -12,9 +12,8 @@ logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 
-image_pairs = []
-control_pairs = []
-
+image_sets = []
+descriptions = None
 
 # DB settings
 
@@ -36,7 +35,7 @@ class UserSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     img_sequence = db.Column(db.JSON, nullable=False)
-    next_pair = db.Column(db.Integer, nullable=False, default=0)
+    next_idx = db.Column(db.Integer, nullable=False, default=0)
     evaluations = db.relationship(
         "Evaluation",
         backref="session",
@@ -50,14 +49,14 @@ class Evaluation(db.Model):
                            db.ForeignKey("user_session.id"),
                            nullable=False,
                            index=True)
-    image_a = db.Column(db.String, nullable=False)
-    image_b = db.Column(db.String, nullable=False)
-    winner_image = db.Column(db.String, nullable=False)
-    winner_position = db.Column(db.String, nullable=False)
+    image_basename = db.Column(db.String, nullable=False)
+    img_set = db.Column(db.JSON, nullable=False)
+    answer = db.Column(db.JSON, nullable=False)
+    comment = db.Column(db.String, nullable=False)
     timestamp = db.Column(db.DateTime, server_default=db.func.now())
     __table_args__ = (
-        db.UniqueConstraint("session_id", "image_a", "image_b",
-                            name="uq_session_imagepair"),
+        db.UniqueConstraint("session_id", "image_basename",
+                            name="uq_session_imageset"),
     )
 
 
@@ -68,39 +67,25 @@ def list_images(path):
            and f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
     }
 
-def initialize_image_pairs():
-    SYSTEMS_DIRS = ["cocos_images", "images"]
-    CONTROL_DIRS = ["control_winners", "control_losers"]
+def initialize_image_sets():
+    IMGS_FOLDER = "static/generated_images"
+    systems_dirs = os.listdir(IMGS_FOLDER)
     
-    global image_pairs
-    pairs = dict()
+    global image_sets
+    sets = dict()
 
-    dir0 = list_images(os.path.join(current_app.root_path, "static", SYSTEMS_DIRS[0]))
-    dir1 = list_images(os.path.join(current_app.root_path, "static", SYSTEMS_DIRS[1]))
-    common = dir0.intersection(dir1)
+    img_sets_list = [list_images(f"{current_app.root_path}/{IMGS_FOLDER}/{d}") for d in systems_dirs]
+    common = set.intersection(*img_sets_list)
 
     for img in common:
-        img_path_0 = f"/static/{SYSTEMS_DIRS[0]}/{img}"
-        img_path_1 = f"/static/{SYSTEMS_DIRS[1]}/{img}"
         basename = os.path.splitext(os.path.basename(img))[0]
-        pairs[basename] = (img_path_0, img_path_1)
+        sets[basename] = [f"/{IMGS_FOLDER}/{d}/{img}" for d in systems_dirs]
 
-    image_pairs = pairs
-    
-    global control_pairs
-    pairs = dict()
+    image_sets = sets
 
-    dir0 = list_images(os.path.join(current_app.root_path, "static", CONTROL_DIRS[0]))
-    dir1 = list_images(os.path.join(current_app.root_path, "static", CONTROL_DIRS[1]))
-    common = dir0.intersection(dir1)
-
-    for img in common:
-        img_path_0 = f"/static/{CONTROL_DIRS[0]}/{img}"
-        img_path_1 = f"/static/{CONTROL_DIRS[1]}/{img}"
-        basename = os.path.splitext(os.path.basename(img))[0]
-        pairs[basename] = (img_path_0, img_path_1)
-
-    control_pairs = pairs
+    global descriptions
+    with open("static/descriptions.json", encoding="utf-8") as descrfie:
+        descriptions = json.load(descrfie)
 
 @app.route('/')
 def index():
@@ -108,39 +93,12 @@ def index():
 
 @app.route('/get_session')
 def get_new_session():
-        # one control image every BATCH_LEN evaluation images
-        BATCH_LEN = 5
 
-        global image_pairs
-        global control_pairs
+        global image_sets
 
         # shuffle image pairs
-        basenames = list(image_pairs.keys())
-        random.shuffle(basenames)
-        print(len(basenames))
-
-        control_basenames = list(control_pairs.keys())
-        random.shuffle(control_basenames)
-        print(len(control_basenames))
-
-        # build sequence
-        sequence = list()
-        i = 0  #batch index
-        j = 0  #basenames index
-        while j < len(basenames):
-            # read the next BATCH_LEN regular images
-            batch = basenames[j : j + BATCH_LEN]
-            j += BATCH_LEN
-
-            # insert next control image in random position
-            control_image = control_basenames[i % len(control_basenames)]
-            batch.insert(random.randrange(BATCH_LEN+1), control_image)
-
-            # append this batch to the session sequence
-            sequence.extend(batch)
-            i += 1
-            
-
+        sequence = list(image_sets.keys())
+        random.shuffle(sequence)
         print(len(sequence))
 
         u_session = UserSession(img_sequence=sequence)
@@ -164,45 +122,28 @@ def get_images():
         return jsonify({"error": f"session number {u_session_id} not found"}), 400
     session_sequence = user_session.img_sequence
     total_pairs = len(session_sequence)
-    session_curr_pair = user_session.next_pair
+    session_curr_index = user_session.next_idx
 
 
-    if session_curr_pair >= total_pairs:
+    if session_curr_index >= total_pairs:
         return jsonify({'end': "Thank you for evaluating all the images in our dataset!",
                         'progress': {
-                            'current': session_curr_pair,
+                            'current': session_curr_index,
                             'total': total_pairs
                         }})
 
-    # read next pair from the preordered list for this session
-    basename = session_sequence[session_curr_pair]
-    img1, img2 = image_pairs[basename] if basename in image_pairs else control_pairs[basename]
-
-    img_name = os.path.splitext(os.path.basename(img1))[0]
-    descr_filename = os.path.join(current_app.root_path,
-                                  "static", "refined-jsons", f"{img_name}.json")
-    img_info = None
-
-    try:
-        with open(descr_filename, encoding="utf-8") as f:
-            img_info = json.load(f)
-    except FileNotFoundError:
-        return jsonify({"error": f"Missing description for {img_name}"}), 500
+    # read next images from the preordered list for this session
+    basename = session_sequence[session_curr_index]
+    images = image_sets[basename]
     
     # randomize presentation order of images
-    if random.choice([True, False]):
-        img1, img2 = img2, img1
-
-    # build a single string representing the description of the image
-    descriptions = [d.rstrip(".") for d in img_info["descriptions"]]
-    descr = f'"{" and ".join(descriptions)}"'
+    random.shuffle(images)
 
     return jsonify({
-        'image1':  img1,
-        'image2':  img2,
-        'description': descr,
+        'images':  images,
+        'description': descriptions[basename],
         'progress': {
-            'current': session_curr_pair,
+            'current': session_curr_index,
             'total': total_pairs
         }
     })
@@ -212,22 +153,12 @@ def get_images():
 def update_scores():
 
     data = request.json
-    image1 = data['image1']
-    image2 = data['image2']
-    winner = data['winner']
+    images = data['images']
+    ans = data['answer']
+    comm = data['comment']
     u_session_id = data['sessionId']
 
-    img_a, img_b = sorted([image1, image2])
-    winner_img = None
-    winner_pos = None
-    if winner == "image1":
-        winner_img = image1
-        winner_pos = "left"
-    elif winner == "image2":
-        winner_img = image2
-        winner_pos = "right"
-    else:
-        return jsonify({"error": f"winner {winner} not valid"}), 500
+    img_basename = images[0].split("/")[-1]
 
     # get user session data
     stmt = select(UserSession).where(UserSession.id == u_session_id)
@@ -239,14 +170,14 @@ def update_scores():
         # save the new evaluation
         db.session.add(Evaluation(
             session_id = u_session_id,
-            image_a = img_a,
-            image_b = img_b,
-            winner_image = winner_img,
-            winner_position = winner_pos
+            image_basename = img_basename,
+            img_set = images,
+            answer = ans,
+            comment = comm
         ))
 
         # update user session data
-        user_session.next_pair += 1
+        user_session.next_idx += 1
 
         # commit to db
         db.session.commit()
@@ -260,7 +191,7 @@ def update_scores():
         app.logger.error(f"DB error: {e}")
         return jsonify({"error": "Database error"}), 500
 
-    app.logger.info(f"Updated session {u_session_id}: next pair {user_session.next_pair}")
+    app.logger.info(f"Updated session {u_session_id}: next index {user_session.next_idx}")
     
     return jsonify({"status": "ok"}), 200
 
@@ -271,7 +202,7 @@ def health():
 
 
 with app.app_context():
-    initialize_image_pairs()
+    initialize_image_sets()
 
 if __name__ == '__main__':
     app.run(debug=True, threaded=True)

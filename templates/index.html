@@ -4,54 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="author" content="Stefano Zoia">
-    <meta property="og:title" content="Visual Evaluation (II)">
+    <meta property="og:title" content="Visual Metaphors">
     <meta property="og:type" content="website">
-    <title>Visual Evaluation (II)</title>
+    <title>Visual Metaphors</title>
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 </head>
 <body id="app">
     <div class="container">
-        <h1>Visual Evaluation (II)</h1>
+        <h1>Visual Metaphors Evaluation</h1>
 
-        <!-- IMAGE COMPARISON -->
-        <div id="img-comp" class="image-comparison" v-if="status==='evaluation'">
-            <div id="img-descr">
-                <p>Select the image that better represents the following description:<br/><br/>
-                <!--ul id="descriptions-list">
-                    <li v-for="desc in currentImages.descriptions" v-text="desc"></li>
-                </ul-->
-                <span v-text="currentImages.description"></span></p>
+        <!-- IMAGE RANKING -->
+        <div id="img-comp" v-if="status==='evaluation'">
+            <div id="img-descr" class="row justify-content-center">
+                <p class="col-12 col-sm-10 col-md-8 col-lg-6"><span v-text="description"></span></p>
             </div>
-            
-            <div class="images">
-                <img id="image1" :src="currentImages.image1" alt="Image 1">
-                <img id="image2" :src="currentImages.image2" alt="Image 2">
-            </div>
-            <div class="image-names">
-                <span id="image1-name">Image A</span>
-                <span id="image2-name">Image B</span>
-            </div>
-            <div class="a-b-buttons">
-                <div class="button-group">
-                    <div class="action-buttons">
-                        <button id="image1-btn" @click="selectWinner('image1')">A is better <span class="shortcut">(&larr; left arrow)</span></button>
+            <form @submit.prevent="submitAnswer">
+                <div class="row row-cols-2 row-cols-md-3 row-cols-lg-5 justify-content-center">
+                    <div v-for="(img, i) in currentImages" class="col mb-3">
+                        <img :src="img" class="img-fluid mx-auto d-block">
+                        <select v-model="answer[i]" class="form-select" required>
+                            <option disabled value="null">Posizione</option>
+                            <option v-for="n in 5" :value="n" v-text="n"></option>
+                        </select>
                     </div>
                 </div>
-                <div class="button-group">
-                    <div class="action-buttons">
-                        <button id="image2-btn" @click="selectWinner('image2')">B is better <span class="shortcut">(&rarr; right arrow)</span></button>
+                <div class="row justify-content-center mb-3">
+                    <div class="col-12 col-sm-10 col-md-8 col-lg-6">
+                        <label for="textarea">Quali sono le motivazioni della tua scelta?</label>
+                        <textarea class="form-control" id="textarea" style="height: 100px" v-model="comment"></textarea>
                     </div>
                 </div>
-            </div>
-            <!--div class="tie-button">
-                <div class="button-group">
-                    <div class="action-buttons">
-                        <button id="tie-btn" @click="selectWinner('tie')">No preference<span class="shortcut">(N key)</span></button>
-                    </div>
-                </div>
-            </div-->
+                <button class="btn btn-primary mx-auto d-block" type="submit" :disabled="answer.includes(null) || comment==''">
+                    Invia
+                </button>
+            </form>
         </div>
         <div v-else-if="status === 'thanks' || status === 'end'">
             <p>Thank you for participating in our study!</p>
@@ -93,7 +82,7 @@
     </div>
     
     <!-- FOOTER -->
-    <footer class="footer">
+    <!--footer class="footer">
         <div class="footer-content">
             <div class="footer-section">
                 <h3>PRIVACY</h3>
@@ -108,10 +97,11 @@
                 cognitive-vision@codesign-lab.org</p>
             </div>
         </div>
-    </footer>
+    </footer-->
     
     
     <script src="https://unpkg.com/vue@3.1.1/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const { createApp } = Vue;
 
@@ -119,7 +109,11 @@
             data() {
                 return {
                     //used for presenting the evaluation task
-                    currentImages: {},
+                    currentImages: [],
+                    description: '',
+
+                    answer: [],
+                    comment: '',
                     
                     //used for progress bar
                     progrText: '',
@@ -157,11 +151,15 @@
                     .then(data => {
                         if (data.end) {
                             this.currentImages = {};
+                            this.description = '';
                             this.updateProgress(data.progress);
                             this.status = 'end';
                         }else{
                             console.log('Received image data:', data);
-                            this.currentImages = data;
+                            this.currentImages = data.images;
+                            this.answer = new Array(this.currentImages.length).fill(null);
+                            this.comment = '';
+                            this.description = data.description;
                             this.updateProgress(data.progress);
                         }
                     })
@@ -185,7 +183,8 @@
                 },
 
                 // Update after each comparison
-                selectWinner(winnerImage) {
+                submitAnswer() {
+                    console.log(this.answer);
                     
                     fetch('/update_scores', {
                         method: 'POST',
@@ -193,9 +192,9 @@
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({ 
-                            image1: this.currentImages.image1, 
-                            image2: this.currentImages.image2,
-                            winner: winnerImage,
+                            images: this.currentImages,
+                            answer: this.answer,
+                            comment: this.comment,
                             sessionId: parseInt(sessionStorage.getItem("session_id"))
                         }),
                     })
